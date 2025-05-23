@@ -1,93 +1,89 @@
-// BMSファイルを読み込み、S乱 / H乱でシャッフルするスクリプト
-// 本文中の説明の処理をJavaScriptで再現（簡略化版）
-
-function handleShuffle() {
-  const fileInput = document.getElementById("fileInput");
-  const mode = document.getElementById("shuffleMode").value;
-  const file = fileInput.files[0];
-  if (!file) return alert("ファイルを選択してください");
-
-  const reader = new FileReader();
-  reader.onload = () => {
-    const originalName = file.name;
-    const extension = originalName.split('.').pop();
-    const baseName = originalName.slice(0, -(extension.length + 1));
-
-    const content = reader.result.replace(/\r\n?/g, "\n");
-    const shuffled = shuffleBMS(content, mode);
-    const blob = new Blob([shuffled], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = baseName + "_shuffle." + extension;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-  reader.readAsText(file);
-}
-
-// 実際のシャッフル処理（簡略）
-function shuffleBMS(text, mode) {
-  const lines = text.split("\n");
-  const header = [];
-  const dataMap = new Map();
-
-  for (const line of lines) {
-    if (!line.startsWith("#")) {
-      header.push(line);
-      continue;
-    }
-    const match = line.match(/^#(\d{3})(\d{2}):(.*)$/);
-    if (match) {
-      const [_, measure, channel, data] = match;
-      if (!dataMap.has(measure)) dataMap.set(measure, {});
-      dataMap.get(measure)[channel] = data;
-    } else {
-      header.push(line);
-    }
-  }
-
-  const result = [...header];
-
-  for (const [measure, channels] of dataMap.entries()) {
+const WebShuffler = {
+  shuffle: (text, mode) => {
+    const lines = text.split(/\r?\n/);
+    const header = [];
+    const measures = new Map();
     const targets = ["11", "12", "13", "14", "15", "18", "19"];
-    const maxLength = Math.max(...targets.map(ch => (channels[ch] || "").length));
-    const step = maxLength / 2;
 
-    const notes = targets.map(ch => {
-      const d = (channels[ch] || "").padEnd(maxLength, "0");
-      return Array.from({ length: step }, (_, i) => d.slice(i * 2, i * 2 + 2));
-    });
-
-    for (let i = 0; i < step; i++) {
-      const group = notes.map(row => row[i]);
-      const nonZero = group.filter(n => n !== "00");
-      if (nonZero.length === 0) continue;
-
-      const shuffled = [...nonZero];
-      if (mode === "H") {
-        shuffled.sort((a, b) => a.localeCompare(b)); // H乱仮: 安定ソート（実際は連打回避アルゴリズム）
+    // パース
+    for (const line of lines) {
+      const m = line.match(/^#(\d{3})(\d{2}):(.*)$/);
+      if (m) {
+        const [_, bar, ch, data] = m;
+        if (!measures.has(bar)) measures.set(bar, {});
+        measures.get(bar)[ch] = data;
       } else {
-        for (let j = shuffled.length - 1; j > 0; j--) {
-          const k = Math.floor(Math.random() * (j + 1));
-          [shuffled[j], shuffled[k]] = [shuffled[k], shuffled[j]];
-        }
-      }
-
-      let idx = 0;
-      for (let chIdx = 0; chIdx < targets.length; chIdx++) {
-        if (notes[chIdx][i] !== "00" && idx < shuffled.length) {
-          notes[chIdx][i] = shuffled[idx++];
-        }
+        header.push(line);
       }
     }
 
-    for (let chIdx = 0; chIdx < targets.length; chIdx++) {
-      const line = "#" + measure + targets[chIdx] + ":" + notes[chIdx].join("");
-      result.push(line);
+    const output = [...header];
+
+    for (const [bar, channels] of measures.entries()) {
+      const maxNotes = Math.max(...targets.map(ch => (channels[ch]?.length || 0) / 2));
+      if (maxNotes === 0) {
+        for (const ch in channels) {
+          output.push(`#${bar}${ch}:${channels[ch]}`);
+        }
+        continue;
+      }
+
+      const scaled = {};
+      for (const ch of targets) {
+        const raw = channels[ch] || "";
+        const notes = raw.match(/../g) || [];
+        const out = Array(maxNotes).fill("00");
+        for (let i = 0; i < notes.length; i++) {
+          const idx = Math.floor(i * maxNotes / notes.length);
+          out[idx] = notes[i];
+        }
+        scaled[ch] = out;
+      }
+
+      // シャッフル処理 per タイミング
+      for (let i = 0; i < maxNotes; i++) {
+        const values = targets.map(ch => scaled[ch][i]);
+        const pool = values.filter(v => v !== "00");
+        if (pool.length <= 1) continue;
+
+        if (mode === "S") {
+          for (let j = pool.length - 1; j > 0; j--) {
+            const k = Math.floor(Math.random() * (j + 1));
+            [pool[j], pool[k]] = [pool[k], pool[j]];
+          }
+        } else {
+          // H乱（連打回避） - 最後の配置位置を考慮してランダム配置
+          const prevIndex = i > 0 ? targets.map((_, idx) => scaled[targets[idx]][i - 1]) : [];
+          const used = new Set();
+          for (let j = 0; j < pool.length; j++) {
+            for (const ch of targets) {
+              const idx = targets.indexOf(ch);
+              if (!used.has(idx) && (i === 0 || scaled[ch][i - 1] === "00")) {
+                scaled[ch][i] = pool[j];
+                used.add(idx);
+                break;
+              }
+            }
+          }
+        }
+
+        let idx = 0;
+        for (const ch of targets) {
+          if (scaled[ch][i] !== "00") scaled[ch][i] = pool[idx++] || "00";
+        }
+      }
+
+      // 出力対象を構築
+      for (const ch of Object.keys(channels)) {
+        if (!targets.includes(ch)) {
+          output.push(`#${bar}${ch}:${channels[ch]}`);
+        }
+      }
+      for (const ch of targets) {
+        output.push(`#${bar}${ch}:${scaled[ch].join("")}`);
+      }
     }
+
+    return output.join("\n");
   }
-
-  return result.join("\n");
-}
+};
