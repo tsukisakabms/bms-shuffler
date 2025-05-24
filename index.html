@@ -10,16 +10,16 @@
   </style>
 </head>
 <body>
-  <h1>BMS変換ツール（S乱 / H乱）</h1>
-  <p>※ #LNOBJを使用している場合正常に処理されません</p>
+  <h1>BMS シャッフル（S乱 / H乱）</h1>
   <input type="file" id="fileInput" accept=".bms,.bme,.bml" />
   <label for="mode">モード選択:</label>
   <select id="mode">
-    <option value="S">S乱</option>
-    <option value="H">H乱</option>
+    <option value="S">S乱（Super Random）</option>
+    <option value="H">H乱（Hyper Random）</option>
   </select>
   <button onclick="processBMS()">変換してダウンロード</button>
 
+  <script src="https://cdn.jsdelivr.net/npm/encoding-japanese"></script>
   <script src="WebShuffler.js"></script>
   <script>
     function processBMS() {
@@ -30,7 +30,12 @@
 
       const reader = new FileReader();
       reader.onload = () => {
-        const content = reader.result;
+        const sjisArray = new Uint8Array(reader.result);
+        const content = Encoding.convert(sjisArray, {
+          to: 'UNICODE',
+          from: 'SJIS',
+          type: 'string'
+        });
         const output = WebShuffler.shuffle(content, mode);
         const base = file.name.replace(/\.[^/.]+$/, '');
         const ext = file.name.split('.').pop();
@@ -43,7 +48,7 @@
         a.click();
         document.body.removeChild(a);
       };
-      reader.readAsText(file);
+      reader.readAsArrayBuffer(file);
     }
   </script>
 </body>
