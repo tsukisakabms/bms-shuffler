@@ -4,7 +4,7 @@ const WebShuffler = {
     const header = [];
     const measures = new Map();
     const targets = ["11", "12", "13", "14", "15", "18", "19"];
-    const extraLines = []; // 保持用
+    const extraLines = [];
     let titleModified = false;
 
     for (const line of lines) {
@@ -34,6 +34,7 @@ const WebShuffler = {
     for (const [bar, chs] of measures.entries()) {
       const channelNotes = {};
       let maxLen = 0;
+
       for (const ch of targets) {
         const data = chs[ch] || "";
         const notes = data.match(/../g) || [];
@@ -56,9 +57,13 @@ const WebShuffler = {
       for (let i = 0; i < maxLen; i++) {
         const activeNotes = [];
         for (const ch of targets) {
-          if (channelNotes[ch][i] !== "00") activeNotes.push(channelNotes[ch][i]);
-          channelNotes[ch][i] = "00";
+          if (channelNotes[ch][i] !== "00") {
+            activeNotes.push(channelNotes[ch][i]);
+            channelNotes[ch][i] = "00";
+          }
         }
+
+        if (activeNotes.length === 0) continue;
 
         if (mode === "S") {
           const shuffledChs = [...targets];
@@ -69,33 +74,38 @@ const WebShuffler = {
             channelNotes[shuffledChs[j]][i] = shuffledNotes[j];
           }
         } else if (mode === "H") {
-          const candidates = [...targets];
-          const assigned = new Set();
           const shuffledNotes = [...activeNotes];
           shuffleArray(shuffledNotes);
 
+          const assigned = new Set();
+          const thisLane = Array(targets.length).fill(null);
+          const laneCandidates = targets.map((ch, idx) => ({ ch, index: idx }));
+
           for (const note of shuffledNotes) {
-            let placed = false;
-            for (const ch of candidates) {
-              const idx = targets.indexOf(ch);
-              if (!assigned.has(ch) && prevLane[idx] !== note) {
-                channelNotes[ch][i] = note;
-                prevLane[idx] = note;
-                assigned.add(ch);
-                placed = true;
-                break;
-              }
+            const valid = laneCandidates.filter(({ ch, index }) =>
+              !assigned.has(ch) && prevLane[index] !== note
+            );
+
+            let target;
+            if (valid.length > 0) {
+              target = valid[Math.floor(Math.random() * valid.length)];
+            } else {
+              const scored = laneCandidates
+                .filter(({ ch }) => !assigned.has(ch))
+                .map(({ ch, index }) => ({
+                  ch,
+                  index,
+                  score: prevLane[index] === note ? 1 : 0
+                }))
+                .sort((a, b) => a.score - b.score);
+              target = scored[0];
             }
-            if (!placed) {
-              for (const ch of candidates) {
-                if (!assigned.has(ch)) {
-                  const idx = targets.indexOf(ch);
-                  channelNotes[ch][i] = note;
-                  prevLane[idx] = note;
-                  assigned.add(ch);
-                  break;
-                }
-              }
+
+            if (target) {
+              channelNotes[target.ch][i] = note;
+              prevLane[target.index] = note;
+              assigned.add(target.ch);
+              thisLane[target.index] = note;
             }
           }
         }
@@ -120,5 +130,6 @@ function shuffleArray(arr) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
 }
+
 
 
