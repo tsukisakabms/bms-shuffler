@@ -29,9 +29,13 @@ const WebShuffler = {
 
     const result = [...header];
 
+    // 小節をまたいで usedChPer16th を維持
+    const usedChPer16th = Array(4).fill(null).map(() => new Set());
+
     for (const [bar, chs] of measures.entries()) {
       const channelNotes = {};
       let maxLen = 0;
+
       for (const ch of targets) {
         const data = chs[ch] || "";
         const notes = data.match(/../g) || [];
@@ -39,12 +43,8 @@ const WebShuffler = {
         maxLen = Math.max(maxLen, notes.length);
       }
 
-      // 1小節の最大音符数 maxLen が16未満でも16分単位で判定するために
-      // maxLen < 16 でも16分区間4分割は維持
-      // 16分単位の音符数（小数点可）
       const sixteenNoteUnit = maxLen / 4;
 
-      // すべてのチャンネルについて最大長に合わせてリスケール
       for (const ch of targets) {
         const notes = channelNotes[ch];
         const rescaled = Array(maxLen).fill("00");
@@ -56,7 +56,6 @@ const WebShuffler = {
       }
 
       if (mode === "S") {
-        // S乱：単純シャッフル（前の実装通り）
         for (let i = 0; i < maxLen; i++) {
           const activeNotes = [];
           for (const ch of targets) {
@@ -77,10 +76,6 @@ const WebShuffler = {
           }
         }
       } else if (mode === "H") {
-        // H乱：16分単位区切り連打回避＆直前タイム連打回避あり
-
-        const usedChPer16th = Array(4).fill(null).map(() => new Set());
-
         for (let i = 0; i < maxLen; i++) {
           const activeNotes = [];
           for (const ch of targets) {
@@ -92,23 +87,22 @@ const WebShuffler = {
           if (activeNotes.length === 0) continue;
 
           const current16thIndex = Math.min(Math.floor(i / sixteenNoteUnit), 3);
-
           shuffleArray(activeNotes);
 
           for (const note of activeNotes) {
-            // 16分区間で未使用かつその時点空きチャンネル
             let candidateChs = targets.filter(ch =>
               !usedChPer16th[current16thIndex].has(ch) && channelNotes[ch][i] === "00"
             );
 
-            // さらに直前タイム(i-1)で同じチャンネル連打しないものだけに絞る
             candidateChs = candidateChs.filter(ch => {
-              if (i === 0) return true;
+              if (i === 0) {
+                // 小節またぎの場合は前回最後の使用状態をチェック
+                return !usedChPer16th[current16thIndex].has(ch);
+              }
               return channelNotes[ch][i - 1] === "00";
             });
 
             if (candidateChs.length === 0) {
-              // 16分区間の制限なし・直前連打なし候補を探す
               candidateChs = targets.filter(ch =>
                 channelNotes[ch][i] === "00" &&
                 (i === 0 || channelNotes[ch][i - 1] === "00")
@@ -116,7 +110,6 @@ const WebShuffler = {
             }
 
             if (candidateChs.length === 0) {
-              // 直前連打も許容し候補探す
               candidateChs = targets.filter(ch => channelNotes[ch][i] === "00");
             }
 
@@ -126,8 +119,12 @@ const WebShuffler = {
               channelNotes[ch][i] = note;
               usedChPer16th[current16thIndex].add(ch);
             }
-            // 配置できないケースはほぼ無し
           }
+        }
+
+        // 次小節のために usedChPer16th をリセット（ただし空にしない）
+        for (let i = 0; i < 4; i++) {
+          usedChPer16th[i] = new Set(); // 内容だけ初期化
         }
       }
 
