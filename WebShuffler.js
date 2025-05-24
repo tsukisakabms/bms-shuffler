@@ -28,7 +28,6 @@ const WebShuffler = {
     }
 
     const result = [...header];
-    let prevNoteChannelGlobal = null; // 小節をまたぐ連打回避用
 
     for (const [bar, chs] of measures.entries()) {
       const channelNotes = {};
@@ -40,7 +39,12 @@ const WebShuffler = {
         maxLen = Math.max(maxLen, notes.length);
       }
 
-      // 小節内は maxLen に合わせてリスケール
+      // 1小節の最大音符数 maxLen が16未満でも16分単位で判定するために
+      // maxLen < 16 でも16分区間4分割は維持
+      // 16分単位の音符数（小数点可）
+      const sixteenNoteUnit = maxLen / 4;
+
+      // すべてのチャンネルについて最大長に合わせてリスケール
       for (const ch of targets) {
         const notes = channelNotes[ch];
         const rescaled = Array(maxLen).fill("00");
@@ -51,81 +55,81 @@ const WebShuffler = {
         channelNotes[ch] = rescaled;
       }
 
-      const prevNoteChannel = Array(maxLen).fill(null); // 小節内の直前チャンネル
-
-      for (let i = 0; i < maxLen; i++) {
-        const activeNotes = [];
-        for (const ch of targets) {
-          if (channelNotes[ch][i] !== "00") {
-            activeNotes.push(channelNotes[ch][i]);
-            channelNotes[ch][i] = "00";
+      if (mode === "S") {
+        // S乱：単純シャッフル（前の実装通り）
+        for (let i = 0; i < maxLen; i++) {
+          const activeNotes = [];
+          for (const ch of targets) {
+            if (channelNotes[ch][i] !== "00") {
+              activeNotes.push(channelNotes[ch][i]);
+              channelNotes[ch][i] = "00";
+            }
           }
-        }
+          if (activeNotes.length === 0) continue;
 
-        if (activeNotes.length === 0) continue;
-
-        if (mode === "S") {
-          // S乱はそのままランダムシャッフル
           const shuffledChs = [...targets];
           shuffleArray(shuffledChs);
           const shuffledNotes = [...activeNotes];
           shuffleArray(shuffledNotes);
+
           for (let j = 0; j < shuffledNotes.length; j++) {
             channelNotes[shuffledChs[j]][i] = shuffledNotes[j];
           }
-          prevNoteChannel[i] = shuffledChs[0]; // 適当にセット（連打回避目的ではない）
-        } else if (mode === "H") {
-          // H乱：連打回避しつつシャッフル、小節またぎも考慮
-          const availableChs = [...targets];
-          shuffleArray(availableChs);
-          shuffleArray(activeNotes);
+        }
+      } else if (mode === "H") {
+        // H乱：16分単位区切り連打回避＆直前タイム連打回避あり
 
-          const prevChAtTime = (i === 0) ? prevNoteChannelGlobal : prevNoteChannel[i - 1];
-          const assignedChannels = new Set();
+        const usedChPer16th = Array(4).fill(null).map(() => new Set());
 
-          for (const note of activeNotes) {
-            let placed = false;
-
-            // 直前時間チャンネルと同じチャンネルを避けつつ割り当て
-            for (const ch of availableChs) {
-              if (ch !== prevChAtTime && !assignedChannels.has(ch) && channelNotes[ch][i] === "00") {
-                channelNotes[ch][i] = note;
-                assignedChannels.add(ch);
-                placed = true;
-                break;
-              }
-            }
-
-            // それでも割り当てられなければ制約緩和
-            if (!placed) {
-              for (const ch of availableChs) {
-                if (!assignedChannels.has(ch) && channelNotes[ch][i] === "00") {
-                  channelNotes[ch][i] = note;
-                  assignedChannels.add(ch);
-                  placed = true;
-                  break;
-                }
-              }
-            }
-
-            // さらに割り当てできなければ重複も許容（ほぼ起きない想定）
-            if (!placed) {
-              for (const ch of availableChs) {
-                if (channelNotes[ch][i] === "00") {
-                  channelNotes[ch][i] = note;
-                  assignedChannels.add(ch);
-                  break;
-                }
-              }
+        for (let i = 0; i < maxLen; i++) {
+          const activeNotes = [];
+          for (const ch of targets) {
+            if (channelNotes[ch][i] !== "00") {
+              activeNotes.push(channelNotes[ch][i]);
+              channelNotes[ch][i] = "00";
             }
           }
+          if (activeNotes.length === 0) continue;
 
-          prevNoteChannel[i] = assignedChannels.values().next().value || null;
+          const current16thIndex = Math.min(Math.floor(i / sixteenNoteUnit), 3);
+
+          shuffleArray(activeNotes);
+
+          for (const note of activeNotes) {
+            // 16分区間で未使用かつその時点空きチャンネル
+            let candidateChs = targets.filter(ch =>
+              !usedChPer16th[current16thIndex].has(ch) && channelNotes[ch][i] === "00"
+            );
+
+            // さらに直前タイム(i-1)で同じチャンネル連打しないものだけに絞る
+            candidateChs = candidateChs.filter(ch => {
+              if (i === 0) return true;
+              return channelNotes[ch][i - 1] === "00";
+            });
+
+            if (candidateChs.length === 0) {
+              // 16分区間の制限なし・直前連打なし候補を探す
+              candidateChs = targets.filter(ch =>
+                channelNotes[ch][i] === "00" &&
+                (i === 0 || channelNotes[ch][i - 1] === "00")
+              );
+            }
+
+            if (candidateChs.length === 0) {
+              // 直前連打も許容し候補探す
+              candidateChs = targets.filter(ch => channelNotes[ch][i] === "00");
+            }
+
+            if (candidateChs.length > 0) {
+              shuffleArray(candidateChs);
+              const ch = candidateChs[0];
+              channelNotes[ch][i] = note;
+              usedChPer16th[current16thIndex].add(ch);
+            }
+            // 配置できないケースはほぼ無し
+          }
         }
       }
-
-      // 小節終わりに最後のタイムのチャンネルをグローバルに保存（次小節で参照）
-      prevNoteChannelGlobal = prevNoteChannel[maxLen - 1];
 
       for (const ch of targets) {
         result.push(`#${bar}${ch}:${channelNotes[ch].join("")}`);
