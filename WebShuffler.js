@@ -4,16 +4,22 @@ const WebShuffler = {
     const header = [];
     const measures = new Map();
     const targets = ["11", "12", "13", "14", "15", "18", "19"];
+    const extraLines = []; // 重複チャンネル行をそのまま保持
 
     for (const line of lines) {
       const m = line.match(/^#(\d{3})(\d{2}):(.*)$/);
       if (m) {
         const [_, bar, ch, data] = m;
-        if (!measures.has(bar)) measures.set(bar, {});
-        if (!measures.get(bar)[ch]) {
-          measures.get(bar)[ch] = data;
+        if (!targets.includes(ch)) {
+          extraLines.push(line); // 対象外チャンネルはそのまま出力に使う
         } else {
-          measures.get(bar)[ch] = data;
+          if (!measures.has(bar)) measures.set(bar, {});
+          const barData = measures.get(bar);
+          if (!barData[ch]) {
+            barData[ch] = data;
+          } else {
+            // 既にある対象チャンネルは2度目以降を無視（今回はシャッフル対象のみに制限）
+          }
         }
       } else {
         header.push(line);
@@ -83,16 +89,14 @@ const WebShuffler = {
         }
       }
 
-      const used = new Set();
-      for (const ch in chs) {
-        if (!targets.includes(ch.replace("", ""))) {
-          result.push(`#${bar}${ch}:${chs[ch]}`);
-          used.add(ch);
-        }
-      }
       for (const ch of targets) {
         result.push(`#${bar}${ch}:${channelNotes[ch].join("")}`);
       }
+    }
+
+    // 重複行や対象外チャンネルを最後に追加
+    for (const line of extraLines) {
+      result.push(line);
     }
 
     return result.join("\n");
@@ -105,3 +109,4 @@ function shuffleArray(arr) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
 }
+
