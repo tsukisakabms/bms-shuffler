@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -11,7 +11,6 @@
 </head>
 <body>
   <h1>BMS シャッフル（S乱 / H乱）</h1>
-  <p>※ #LNOBJを使用している場合正常に処理されません</p>
   <input type="file" id="fileInput" accept=".bms,.bme,.bml" />
   <label for="mode">モード選択:</label>
   <select id="mode">
@@ -20,7 +19,7 @@
   </select>
   <button onclick="processBMS()">変換してダウンロード</button>
 
-  <script src="https://cdn.jsdelivr.net/npm/encoding-japanese"></script>
+  <script src="https://cdn.jsdelivr.net/npm/encoding-japanese@1.0.30/encoding.min.js"></script>
   <script src="WebShuffler.js"></script>
   <script>
     function processBMS() {
