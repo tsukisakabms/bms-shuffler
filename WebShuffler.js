@@ -28,6 +28,7 @@ const WebShuffler = {
     }
 
     const result = [...header];
+    let prevNoteChannelGlobal = null; // 小節をまたぐ連打回避用
 
     for (const [bar, chs] of measures.entries()) {
       const channelNotes = {};
@@ -39,6 +40,7 @@ const WebShuffler = {
         maxLen = Math.max(maxLen, notes.length);
       }
 
+      // 小節内は maxLen に合わせてリスケール
       for (const ch of targets) {
         const notes = channelNotes[ch];
         const rescaled = Array(maxLen).fill("00");
@@ -49,7 +51,7 @@ const WebShuffler = {
         channelNotes[ch] = rescaled;
       }
 
-      const prevNoteChannel = Array(maxLen).fill(null); // 各タイミングの前回チャンネル
+      const prevNoteChannel = Array(maxLen).fill(null); // 小節内の直前チャンネル
 
       for (let i = 0; i < maxLen; i++) {
         const activeNotes = [];
@@ -63,6 +65,7 @@ const WebShuffler = {
         if (activeNotes.length === 0) continue;
 
         if (mode === "S") {
+          // S乱はそのままランダムシャッフル
           const shuffledChs = [...targets];
           shuffleArray(shuffledChs);
           const shuffledNotes = [...activeNotes];
@@ -70,38 +73,59 @@ const WebShuffler = {
           for (let j = 0; j < shuffledNotes.length; j++) {
             channelNotes[shuffledChs[j]][i] = shuffledNotes[j];
           }
-          prevNoteChannel[i] = shuffledChs[0]; // 適当に更新
+          prevNoteChannel[i] = shuffledChs[0]; // 適当にセット（連打回避目的ではない）
         } else if (mode === "H") {
+          // H乱：連打回避しつつシャッフル、小節またぎも考慮
           const availableChs = [...targets];
           shuffleArray(availableChs);
           shuffleArray(activeNotes);
 
-          const prevCh = i > 0 ? prevNoteChannel[i - 1] : null;
+          const prevChAtTime = (i === 0) ? prevNoteChannelGlobal : prevNoteChannel[i - 1];
+          const assignedChannels = new Set();
 
           for (const note of activeNotes) {
             let placed = false;
 
+            // 直前時間チャンネルと同じチャンネルを避けつつ割り当て
             for (const ch of availableChs) {
-              if (ch !== prevCh && channelNotes[ch][i] === "00") {
+              if (ch !== prevChAtTime && !assignedChannels.has(ch) && channelNotes[ch][i] === "00") {
                 channelNotes[ch][i] = note;
-                prevNoteChannel[i] = ch;
+                assignedChannels.add(ch);
                 placed = true;
                 break;
               }
             }
 
+            // それでも割り当てられなければ制約緩和
+            if (!placed) {
+              for (const ch of availableChs) {
+                if (!assignedChannels.has(ch) && channelNotes[ch][i] === "00") {
+                  channelNotes[ch][i] = note;
+                  assignedChannels.add(ch);
+                  placed = true;
+                  break;
+                }
+              }
+            }
+
+            // さらに割り当てできなければ重複も許容（ほぼ起きない想定）
             if (!placed) {
               for (const ch of availableChs) {
                 if (channelNotes[ch][i] === "00") {
                   channelNotes[ch][i] = note;
-                  prevNoteChannel[i] = ch;
+                  assignedChannels.add(ch);
                   break;
                 }
               }
             }
           }
+
+          prevNoteChannel[i] = assignedChannels.values().next().value || null;
         }
       }
+
+      // 小節終わりに最後のタイムのチャンネルをグローバルに保存（次小節で参照）
+      prevNoteChannelGlobal = prevNoteChannel[maxLen - 1];
 
       for (const ch of targets) {
         result.push(`#${bar}${ch}:${channelNotes[ch].join("")}`);
