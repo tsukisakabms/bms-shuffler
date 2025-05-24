@@ -15,7 +15,9 @@ const WebShuffler = {
           extraLines.push(line);
         } else {
           if (!measures.has(bar)) measures.set(bar, {});
-          measures.get(bar)[ch] = data;
+          if (!measures.get(bar)[ch]) {
+            measures.get(bar)[ch] = data;
+          }
         }
       } else {
         if (line.startsWith("#TITLE") && !titleModified) {
@@ -39,7 +41,6 @@ const WebShuffler = {
         maxLen = Math.max(maxLen, notes.length);
       }
 
-      // リスケール
       for (const ch of targets) {
         const notes = channelNotes[ch];
         const rescaled = Array(maxLen).fill("00");
@@ -50,15 +51,15 @@ const WebShuffler = {
         channelNotes[ch] = rescaled;
       }
 
-      const prevLane = Array(targets.length).fill(null); // 直前のnote
+      const prevLane = Array(targets.length).fill(null);
 
       for (let i = 0; i < maxLen; i++) {
         const activeNotes = [];
         for (const ch of targets) {
           if (channelNotes[ch][i] !== "00") {
             activeNotes.push(channelNotes[ch][i]);
+            channelNotes[ch][i] = "00";
           }
-          channelNotes[ch][i] = "00"; // 一旦クリア
         }
 
         if (mode === "S") {
@@ -72,33 +73,34 @@ const WebShuffler = {
         } else if (mode === "H") {
           const shuffledNotes = [...activeNotes];
           shuffleArray(shuffledNotes);
-
           const assigned = new Set();
+
           for (const note of shuffledNotes) {
-            let bestIdx = -1;
-            let minPenalty = Infinity;
+            let placed = false;
 
-            for (let idx = 0; idx < targets.length; idx++) {
-              const ch = targets[idx];
-              if (assigned.has(ch)) continue;
-
-              const prev = prevLane[idx];
-              const isRepeat = prev === note;
-              const penalty = isRepeat ? 1 : 0;
-
-              if (penalty < minPenalty) {
-                minPenalty = penalty;
-                bestIdx = idx;
+            // 連打を避けて配置
+            for (const ch of targets) {
+              const idx = targets.indexOf(ch);
+              if (!assigned.has(ch) && prevLane[idx] !== note) {
+                channelNotes[ch][i] = note;
+                prevLane[idx] = note;
+                assigned.add(ch);
+                placed = true;
+                break;
               }
-
-              if (penalty === 0) break; // 即決
             }
 
-            if (bestIdx >= 0) {
-              const ch = targets[bestIdx];
-              channelNotes[ch][i] = note;
-              prevLane[bestIdx] = note;
-              assigned.add(ch);
+            // どうしても連打回避できない場合は空きチャンネルに配置
+            if (!placed) {
+              for (const ch of targets) {
+                if (!assigned.has(ch)) {
+                  const idx = targets.indexOf(ch);
+                  channelNotes[ch][i] = note;
+                  prevLane[idx] = note;
+                  assigned.add(ch);
+                  break;
+                }
+              }
             }
           }
         }
@@ -123,3 +125,4 @@ function shuffleArray(arr) {
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
 }
+
