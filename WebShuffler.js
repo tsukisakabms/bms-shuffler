@@ -13,7 +13,7 @@ const WebShuffler = {
         if (!measures.get(bar)[ch]) {
           measures.get(bar)[ch] = data;
         } else {
-          measures.get(bar)[ch + '_DUP'] = data;
+          measures.get(bar)[ch] = data;
         }
       } else {
         header.push(line);
@@ -85,7 +85,7 @@ const WebShuffler = {
 
       const used = new Set();
       for (const ch in chs) {
-        if (!targets.includes(ch.replace("_DUP", ""))) {
+        if (!targets.includes(ch.replace("", ""))) {
           result.push(`#${bar}${ch}:${chs[ch]}`);
           used.add(ch);
         }
