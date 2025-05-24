@@ -3,20 +3,47 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BMS Shuffler (S乱 / H乱)</title>
+  <title>BMS シャッフルツール</title>
   <style>
-    body { font-family: sans-serif; padding: 2rem; background: #f8f8f8; }
-    input, select, button { margin-top: 1rem; display: block; }
+    body { font-family: sans-serif; padding: 2rem; background: #f4f4f4; }
+    label, select, input, button { display: block; margin-top: 1rem; }
   </style>
 </head>
 <body>
-  <h1>BMS Shuffler (S乱 / H乱)</h1>
-  <input type="file" id="fileInput" accept=".bms" />
-  <select id="shuffleMode">
-    <option value="S">S乱（Super random）</option>
-    <option value="H">H乱（Hyper random）</option>
+  <h1>BMS シャッフル（S乱 / H乱）</h1>
+  <input type="file" id="fileInput" accept=".bms,.bme,.bml" />
+  <label for="mode">モード選択:</label>
+  <select id="mode">
+    <option value="S">S乱（Super Random）</option>
+    <option value="H">H乱（Hyper Random）</option>
   </select>
   <button onclick="processBMS()">変換してダウンロード</button>
+
   <script src="WebShuffler.js"></script>
+  <script>
+    function processBMS() {
+      const fileInput = document.getElementById('fileInput');
+      const mode = document.getElementById('mode').value;
+      const file = fileInput.files[0];
+      if (!file) return alert('ファイルを選択してください');
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        const content = reader.result;
+        const output = WebShuffler.shuffle(content, mode);
+        const base = file.name.replace(/\.[^/.]+$/, '');
+        const ext = file.name.split('.').pop();
+        const blob = new Blob([output], { type: 'text/plain' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${base}_${mode}.${ext}`;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      };
+      reader.readAsText(file);
+    }
+  </script>
 </body>
 </html>
