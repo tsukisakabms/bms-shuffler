@@ -5,7 +5,6 @@ const WebShuffler = {
     const measures = new Map();
     const targets = ["11", "12", "13", "14", "15", "18", "19"];
 
-    // パース
     for (const line of lines) {
       const m = line.match(/^#(\d{3})(\d{2}):(.*)$/);
       if (m) {
@@ -14,7 +13,6 @@ const WebShuffler = {
         if (!measures.get(bar)[ch]) {
           measures.get(bar)[ch] = data;
         } else {
-          // 同じ小節+チャンネル（例: #00401）が複数回ある場合も保持
           measures.get(bar)[ch + '_DUP'] = data;
         }
       } else {
@@ -34,7 +32,6 @@ const WebShuffler = {
         maxLen = Math.max(maxLen, notes.length);
       }
 
-      // リスケーリング
       for (const ch of targets) {
         const notes = channelNotes[ch];
         const rescaled = Array(maxLen).fill("00");
@@ -45,7 +42,6 @@ const WebShuffler = {
         channelNotes[ch] = rescaled;
       }
 
-      // 各タイミング位置でシャッフル
       for (let i = 0; i < maxLen; i++) {
         const activeNotes = [];
         for (const ch of targets) {
@@ -54,7 +50,6 @@ const WebShuffler = {
         }
 
         if (mode === "S") {
-          // S乱: ランダムなチャンネルに1音ずつ、かぶりなし
           const shuffledChs = [...targets];
           const shuffledNotes = [...activeNotes];
           shuffleArray(shuffledChs);
@@ -63,12 +58,9 @@ const WebShuffler = {
             channelNotes[shuffledChs[j]][i] = shuffledNotes[j];
           }
         } else if (mode === "H") {
-          // H乱: 連打回避（同じレーン連続禁止。ただし例外あり）
-          const prev = i > 0 ? targets.map(ch => channelNotes[ch][i - 1]) : [];
           const assigned = new Set();
           const shuffledNotes = [...activeNotes];
           shuffleArray(shuffledNotes);
-
           for (const note of shuffledNotes) {
             for (const ch of targets) {
               if (!assigned.has(ch) && (i === 0 || channelNotes[ch][i - 1] === "00")) {
@@ -78,7 +70,6 @@ const WebShuffler = {
               }
             }
           }
-          // 残りは連打を許容して埋める
           for (const note of shuffledNotes) {
             if ([...assigned].includes(note)) continue;
             for (const ch of targets) {
@@ -92,7 +83,6 @@ const WebShuffler = {
         }
       }
 
-      // 出力構築
       const used = new Set();
       for (const ch in chs) {
         if (!targets.includes(ch.replace("_DUP", ""))) {
